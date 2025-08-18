@@ -4,8 +4,8 @@ import pandas as pd
 import os
 import io
 from datetime import datetime
-import gspread
-from google.oauth2.service_account import Credentials
+from github import Github
+from io import BytesIO
 
 st.set_page_config(page_title="🧬 eAMR RAG Evaluator", layout="wide")
 st.title("🧪 eAMR RAG Evaluation Interface")
@@ -183,27 +183,30 @@ else:
                 "Perspective_Comment": st.session_state.perspective_comment,
                 "General_Comment": st.session_state.general_comment,
             }
-            # --- Connect to Google Sheets ---
-            creds_dict = st.secrets["gcp_service_account"]
-            creds = Credentials.from_service_account_info(
-                creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"]
+            # Read existing log file from GitHub
+            g = Github(st.secrets["github"]["token"])
+            repo = g.get_user(st.secrets["github"]["repo_owner"]).get_repo(st.secrets["github"]["repo_name"])
+            try:
+                contents = repo.get_contents("logs/eamr_rag_eval.xlsx", ref=st.secrets["github"]["branch"])
+                existing_file = BytesIO(contents.decoded_content)
+                df_existing = pd.read_excel(existing_file)
+            except:
+                df_existing = pd.DataFrame(columns=list(log_data.keys()))
+
+            # Append new row
+            df_new = pd.concat([df_existing, pd.DataFrame([log_data])], ignore_index=True)
+
+            # Save back to GitHub
+            output = BytesIO()
+            df_new.to_excel(output, index=False)
+            output.seek(0)
+            repo.update_file(
+                path="logs/eamr_rag_eval.xlsx",
+                message=f"Add new evaluation by {st.session_state.examiner}",
+                content=output.read(),
+                sha=contents.sha if 'contents' in locals() else None,
+                branch=st.secrets["github"]["branch"]
             )
-            client = gspread.authorize(creds)
 
-            # Open spreadsheet and worksheet
-            sheet = client.open("logs").worksheet("logs")
-
-            # Append the row
-            sheet.append_row(log_data)
-
-            st.success("✅ Evaluation logged successfully to Google Sheets!")
+            st.success("✅ Evaluation logged successfully to GitHub!")
             reset_session()
-
-            # df = pd.DataFrame([log_data])
-            # if os.path.exists(LOG_FILE):
-            #     df_existing = pd.read_excel(LOG_FILE)
-            #     df = pd.concat([df_existing, df], ignore_index=True)
-
-            # df.to_excel(LOG_FILE, index=False)
-            # st.success("✅ Evaluation logged successfully!")
-            # reset_session()
