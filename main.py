@@ -4,6 +4,8 @@ import pandas as pd
 import os
 import io
 from datetime import datetime
+import gspread
+from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="🧬 eAMR RAG Evaluator", layout="wide")
 st.title("🧪 eAMR RAG Evaluation Interface")
@@ -181,12 +183,27 @@ else:
                 "Perspective_Comment": st.session_state.perspective_comment,
                 "General_Comment": st.session_state.general_comment,
             }
+            # --- Connect to Google Sheets ---
+            creds_dict = st.secrets["gcp_service_account"]
+            creds = Credentials.from_service_account_info(
+                creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"]
+            )
+            client = gspread.authorize(creds)
 
-            df = pd.DataFrame([log_data])
-            if os.path.exists(LOG_FILE):
-                df_existing = pd.read_excel(LOG_FILE)
-                df = pd.concat([df_existing, df], ignore_index=True)
+            # Open spreadsheet and worksheet
+            sheet = client.open("logs").worksheet("logs")
 
-            df.to_excel(LOG_FILE, index=False)
-            st.success("✅ Evaluation logged successfully!")
+            # Append the row
+            sheet.append_row(log_data)
+
+            st.success("✅ Evaluation logged successfully to Google Sheets!")
             reset_session()
+
+            # df = pd.DataFrame([log_data])
+            # if os.path.exists(LOG_FILE):
+            #     df_existing = pd.read_excel(LOG_FILE)
+            #     df = pd.concat([df_existing, df], ignore_index=True)
+
+            # df.to_excel(LOG_FILE, index=False)
+            # st.success("✅ Evaluation logged successfully!")
+            # reset_session()
